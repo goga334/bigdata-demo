@@ -1,52 +1,34 @@
-from confluent_kafka import Consumer
 import polars as pl
 import json
 from pathlib import Path
 
 DATA_DIR = Path("/opt/app/data")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+EVENTS_FILE = DATA_DIR / "events.jsonl"
 BRONZE_PATH = DATA_DIR / "bronze_events.parquet"
 
-def run_consumer(max_messages: int = 50_000, batch_size: int = 10_000):
-    c = Consumer({
-        "bootstrap.servers": "kafka:9092",
-        "group.id": "bronze-writer",
-        "auto.offset.reset": "earliest",
-    })
-    c.subscribe(["events"])
 
-    batch = []
-    read = 0
+def run_consumer():
+    if not EVENTS_FILE.exists():
+        print("No events file, nothing to consume")
+        return
 
-    while read < max_messages:
-        msg = c.poll(1.0)
-        if msg is None:
-            break
-        if msg.error():
-            print("Error:", msg.error())
-            continue
+    rows = []
+    with EVENTS_FILE.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            rows.append(json.loads(line))
 
-        event = json.loads(msg.value().decode("utf-8"))
-        batch.append(event)
-        read += 1
+    if not rows:
+        print("No events in file")
+        return
 
-        if len(batch) >= batch_size:
-            df = pl.DataFrame(batch)
-            if BRONZE_PATH.exists():
-                # append
-                old = pl.read_parquet(str(BRONZE_PATH))
-                df = pl.concat([old, df], rechunk=True)
-            df.write_parquet(str(BRONZE_PATH))
-            batch.clear()
+    df = pl.DataFrame(rows)
+    df.write_parquet(str(BRONZE_PATH))
+    print(f"Wrote {len(rows)} events to {BRONZE_PATH}")
 
-    if batch:
-        df = pl.DataFrame(batch)
-        if BRONZE_PATH.exists():
-            old = pl.read_parquet(str(BRONZE_PATH))
-            df = pl.concat([old, df], rechunk=True)
-        df.write_parquet(str(BRONZE_PATH))
-
-    c.close()
 
 if __name__ == "__main__":
     run_consumer()

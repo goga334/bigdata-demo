@@ -1,0 +1,9 @@
+graph LR
+  postgres([postgres])
+  kafka([kafka])
+  airflow-init([airflow-init])
+  airflow-webserver([airflow-webserver])
+  airflow-scheduler([airflow-scheduler])
+  airflow-init --> postgres
+  airflow-webserver --> airflow-init
+  airflow-scheduler --> airflow-init
